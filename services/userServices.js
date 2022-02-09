@@ -1,14 +1,34 @@
 import { userDao } from '../models';
 import token from '../utils/token';
+import axios from 'axios';
 
-const signIn = async (email, name) => {
-  const isExist = await userDao.isExistEmail(email);
-  let userId = await userDao.getUserId(email);
+const signIn = async accessToken => {
+  // accessToken으로 kakao API에 접근하여 사용자 정보 취득
+  const user = await axios.get('https://kapi.kakao.com/v2/user/me', {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-type': 'application/x-www-form-urlencoded;charset=utf-8',
+    },
+  });
+
+  if (!user.data) {
+    const err = new Error('INVALID_USER');
+    err.statusCode = 400;
+
+    throw err;
+  }
+
+  const data = user.data;
+  const isExist = await userDao.isExistEmail(data.kakao_account.email);
+  let userId;
+
   if (isExist) {
+    userId = await userDao.getUserId(data.kakao_account.email);
     return token.signToken(userId);
   }
-  await userDao.createUser(email, name);
-  userId = await userDao.getUserId(email);
+
+  await userDao.createUser(data.kakao_account.email, data.properties.nickname);
+  userId = await userDao.getUserId(data.kakao_account.email);
   const signToken = token.signToken(userId);
   return signToken;
 };
